@@ -76,20 +76,25 @@ REM above 6.10.3 -- and the resulting mismatch is the exact thing this script is
 REM supposed to prevent, because it deploys one Qt's DLLs beside a binary linked
 REM against another. PowerShell's [version] cast compares the parts as numbers,
 REM which is the only correct way to order these.
-if "%QTPREFIX%"=="" if exist "C:\Qt" (
-    for /f "delims=" %%D in ('powershell -NoProfile -Command ^
-        "Get-ChildItem 'C:\Qt' -Directory -Filter '6.*' ^| Where-Object { $_.Name -match '^^6\.' } ^| Sort-Object { [version]$_.Name } -Descending ^| Select-Object -ExpandProperty Name" 2^>nul') do (
-        if "!QTPREFIX!"=="" (
-            for /f "delims=" %%E in ('dir /b /ad "C:\Qt\%%D\msvc*_64" 2^>nul') do (
-                if "!QTPREFIX!"=="" set "QTPREFIX=C:\Qt\%%D\%%E"
-            )
-        )
-    )
-    if not "!QTPREFIX!"=="" (
-        echo ==^> guessed Qt at !QTPREFIX!
-        echo     ^(pass --qt or set CMAKE_PREFIX_PATH to choose a different one^)
-    )
-)
+REM
+REM The whole search is ONE PowerShell command on a plain command line, writing
+REM to a temp file -- not inside for /f, and not inside an if-block. The old
+REM form ran it inside for /f with ^| between stages, but ^ is an escape only
+REM OUTSIDE double quotes: PowerShell received a literal "^|", failed, and
+REM 2^>nul hid it, so the guess silently found nothing on every machine. Inside
+REM double quotes on an ordinary line, | ( ) { } need no escaping at all.
+REM
+REM msvc dirs match ^msvc\d+_64$ exactly: the looser msvc*_64 also matches
+REM msvc2022_arm64, which cannot link an x64 build.
+if not "%QTPREFIX%"=="" goto :haveqt
+if not exist "C:\Qt" goto :haveqt
+powershell -NoProfile -Command "$r = Get-ChildItem 'C:\Qt' -Directory | Where-Object { $_.Name -match '^6\.\d+(\.\d+)*$' } | Sort-Object { [version]$_.Name } -Descending | ForEach-Object { Get-ChildItem $_.FullName -Directory | Where-Object { $_.Name -match '^msvc\d+_64$' } | Sort-Object Name -Descending | Select-Object -First 1 } | Select-Object -First 1; if ($r) { $r.FullName }" > "%TEMP%\anyfile_qtguess.txt" 2>nul
+set /p QTPREFIX=<"%TEMP%\anyfile_qtguess.txt"
+del "%TEMP%\anyfile_qtguess.txt" >nul 2>nul
+if "%QTPREFIX%"=="" goto :haveqt
+echo ==^> guessed Qt at %QTPREFIX%
+echo     (pass --qt or set CMAKE_PREFIX_PATH to choose a different one)
+:haveqt
 
 if "%QTPREFIX%"=="" (
     echo error: no Qt prefix. Either:
