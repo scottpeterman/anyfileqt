@@ -42,7 +42,10 @@ bool isPointlessDrop(const QStringList &sources, const QString &destDir) {
         const QString s = clean(raw);
         if (d.compare(s, kPathCase) == 0 || d.startsWith(s + QLatin1Char('/'), kPathCase))
             return true;
-        if (clean(QFileInfo(s).absolutePath()).compare(d, kPathCase) != 0)
+        // path(), not absolutePath(): lexical, so it neither touches the file
+        // system nor depends on the cwd. absolutePath() turned the rootless
+        // "/a/x.txt" into "C:/a" on Windows and the comparison missed.
+        if (clean(QFileInfo(s).path()).compare(d, kPathCase) != 0)
             allAlreadyThere = false;
     }
     return allAlreadyThere;

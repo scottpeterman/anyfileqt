@@ -26,6 +26,11 @@ target_link_libraries(anyfile_app PUBLIC anyfile::core Qt6::Widgets Qt6::Gui)
 # and a define scoped to the executable would leave it reporting a default.
 target_compile_definitions(anyfile_app PUBLIC ANYFILE_VERSION="${PROJECT_VERSION}")
 
+if(WIN32)
+    # SHGetFileInfoW, for the Type column (filetypes.cpp).
+    target_link_libraries(anyfile_app PRIVATE shell32)
+endif()
+
 if(MSVC)
     target_compile_options(anyfile_app PRIVATE /W4)
     target_compile_definitions(anyfile_app PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)

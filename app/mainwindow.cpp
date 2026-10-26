@@ -388,8 +388,8 @@ void MainWindow::paste() {
     pasteInto(QGuiApplication::clipboard()->mimeData(), m_active->path());
 }
 
-FileJob *MainWindow::pasteInto(const QMimeData *data, const QString &dir) {
-    const ClipboardFiles f = readClipboardData(data);
+FileJob *MainWindow::pasteInto(const QMimeData *mime, const QString &dir) {
+    const ClipboardFiles f = readClipboardData(mime);
     if (f.paths.isEmpty() || dir.isEmpty()) return nullptr;
     FileJob *job = startJob(f.cut ? OpKind::Move : OpKind::Copy, f.paths, dir);
     if (f.cut) m_cutJobs.insert(job);

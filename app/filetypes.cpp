@@ -2,14 +2,18 @@
 #include "app/filetypes.h"
 
 #include <QDir>
-#include <QFileIconProvider>
 #include <QFileInfo>
 #include <QHash>
 #include <QMimeDatabase>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <shellapi.h>
+#include <string>
+#endif
+
 namespace anyfile {
 
-#ifndef Q_OS_WIN
 namespace {
 
 // The common names, so the column reads like Explorer's on every platform
@@ -64,14 +68,30 @@ bool usableComment(const QString &comment, const QString &mimeName) {
     return !comment.isEmpty() && comment != mimeName && !comment.contains(QLatin1Char('/'));
 }
 
-}  // namespace
+#ifdef Q_OS_WIN
+// Explorer's own wording, read from the same registry entries Explorer uses,
+// so it follows whatever the machine has installed ("Text Document", or the
+// name an editor registered for .txt). QFileIconProvider::type() does NOT do
+// this in Qt 6: it goes to Qt's built-in MIME database, which on Windows has
+// no descriptions, and the Type column showed "text/plain".
+//
+// SHGFI_USEFILEATTRIBUTES: the name alone decides, nothing is opened or
+// stat'ed, so a slow network share costs nothing per row. Empty on failure,
+// and the caller falls back to the table below rather than a MIME name.
+QString shellTypeName(const QString &name, bool isDir) {
+    SHFILEINFOW sfi{};
+    const std::wstring w = name.toStdWString();
+    const DWORD attrs = isDir ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
+    if (!::SHGetFileInfoW(w.c_str(), attrs, &sfi, sizeof(sfi),
+                          SHGFI_TYPENAME | SHGFI_USEFILEATTRIBUTES))
+        return {};
+    return QString::fromWCharArray(sfi.szTypeName).trimmed();
+}
 #endif
 
+}  // namespace
+
 QString friendlyType(const QFileInfo &fi) {
-#ifdef Q_OS_WIN
-    static QFileIconProvider provider;
-    return provider.type(fi);
-#else
     if (fi.isDir()) {
 #ifdef Q_OS_MACOS
         if (fi.isBundle())
@@ -80,7 +100,15 @@ QString friendlyType(const QFileInfo &fi) {
                        : QStringLiteral("Package");
 #endif
         if (QDir(fi.absoluteFilePath()).isRoot()) return QStringLiteral("Drive");
+#ifdef Q_OS_WIN
+        static const QString folder = [] {
+            const QString n = shellTypeName(QStringLiteral("folder"), true);
+            return n.isEmpty() ? QStringLiteral("File folder") : n;
+        }();
+        return folder;
+#else
         return QStringLiteral("File folder");
+#endif
     }
 
     // Keyed on the COMPLETE suffix, so .tar.gz gets the tar glob rather than
@@ -93,6 +121,17 @@ QString friendlyType(const QFileInfo &fi) {
                             : fi.completeSuffix().toLower();
     const auto hit = cache.constFind(key);
     if (hit != cache.constEnd()) return *hit;
+
+#ifdef Q_OS_WIN
+    // The shell keys on the LAST suffix, as Explorer does, so ask with a name
+    // carrying only that: "x.gz" for a.tar.gz, the bare name when there is none.
+    const QString shell = shellTypeName(
+        ext.isEmpty() ? fi.fileName() : QStringLiteral("x.") + ext, false);
+    if (!shell.isEmpty()) {
+        cache.insert(key, shell);
+        return shell;
+    }
+#endif
 
     // Curated names first, by complete suffix (tar.gz) then by last suffix.
     const QHash<QString, QString> &known = knownNames();
@@ -125,7 +164,6 @@ QString friendlyType(const QFileInfo &fi) {
     }
     cache.insert(key, name);
     return name;
-#endif
 }
 
 }  // namespace anyfile

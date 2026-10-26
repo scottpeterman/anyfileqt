@@ -51,7 +51,7 @@ bool noPartials(const QString &dir) {
 
 void setMtime(const QString &path, const QDateTime &when) {
     QFile f(path);
-    f.open(QIODevice::ReadWrite);
+    if (!f.open(QIODevice::ReadWrite)) return;
     f.setFileTime(when, QFileDevice::FileModificationTime);
 }
 

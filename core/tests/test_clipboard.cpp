@@ -1,4 +1,5 @@
 // core/tests/test_clipboard.cpp
+#include <QDir>
 #include <QMimeData>
 #include <QUrl>
 #include <QtEndian>
@@ -33,7 +34,9 @@ TEST(clipboard_writes_every_platforms_cut_marker) {
         md->data("application/x-qt-windows-mime;value=\"Preferred DropEffect\"");
     CHECK_EQ(int(e.size()), 4);
     CHECK_EQ(qFromLittleEndian<quint32>(e.constData()), quint32(2));
-    CHECK_EQ(md->text(), QString("/tmp/x"));
+    // Plain text is for pasting into a terminal or an editor, so it carries
+    // the platform's separators: \tmp\x on Windows.
+    CHECK_EQ(md->text(), QDir::toNativeSeparators("/tmp/x"));
 }
 
 TEST(clipboard_reads_nautilus_only_format) {

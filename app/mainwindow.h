@@ -43,7 +43,7 @@ public:
 
     // Paste of clipboard-format data into dir: a cut moves, a copy copies.
     // Public so the tests can drive it without the system clipboard.
-    FileJob *pasteInto(const QMimeData *data, const QString &dir);
+    FileJob *pasteInto(const QMimeData *mime, const QString &dir);
 
     void saveSettings();
 
