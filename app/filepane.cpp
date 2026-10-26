@@ -185,10 +185,12 @@ FilePane::FilePane(QWidget *parent) : QWidget(parent) {
         h->setSectionsMovable(true);
         // Sized to fit a half-width pane at 1280 without a horizontal
         // scrollbar; the header state is saved, so a user's widths stick.
-        h->resizeSection(Name, 220);
-        h->resizeSection(Modified, 135);
-        h->resizeSection(Type, 100);
-        h->resizeSection(Size, 75);
+        // Type is wide enough for "Markdown Document" and "Configuration
+        // File"; Name gives up the 20px.
+        h->resizeSection(Name, 200);
+        h->resizeSection(Modified, 130);
+        h->resizeSection(Type, 140);
+        h->resizeSection(Size, 70);
     }
 
     m_list->setViewMode(QListView::IconMode);
