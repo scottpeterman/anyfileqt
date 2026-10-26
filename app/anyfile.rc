@@ -1,0 +1,6 @@
+// app/anyfile.rc -- Windows resources.
+//
+// IDI_ICON1 is not arbitrary: the shell shows the icon with the LOWEST numeric
+// resource id as the executable's icon, and Qt picks the same one for the
+// window. Listed in CMake only when assets/anyfile.ico exists.
+IDI_ICON1 ICON "../assets/anyfile.ico"
