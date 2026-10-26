@@ -1,5 +1,7 @@
 # AnyFile
 
+[![build](https://github.com/scottpeterman/anyfileqt/actions/workflows/build.yml/badge.svg)](https://github.com/scottpeterman/anyfileqt/actions/workflows/build.yml)
+
 A Windows-styled, dual-pane file manager for Linux, macOS and Windows. C++17 and Qt 6, no other dependencies.
 
 Explorer's layout and habits on every platform: a command bar, a navigation pane with Quick access and This PC, an address bar with back/forward/up, Details and Icons views, Explorer's keyboard shortcuts and naming rules. Two panes side by side, Total Commander style, with an operation queue underneath.
@@ -83,6 +85,16 @@ Each script builds Release, deploys Qt beside the binary, runs `anyfile --check`
 | macOS | `./scripts/bundle-mac.sh --zip`, or `--sign "Developer ID Application: ..." --dmg` | a signed `.app` in a zip or dmg |
 | Linux | `./scripts/bundle-linux.sh` | a relocatable tarball with `install.sh` |
 | Windows | `scripts\bundle-windows.bat --zip` | an unzip-and-run folder |
+
+## Continuous integration and releases
+
+Every push to `main` builds, tests and packages on Linux, macOS (arm64) and Windows through `.github/workflows/build.yml`. The packages are attached to each run as artifacts.
+
+To publish a release, bump `project(VERSION)` in `CMakeLists.txt`, commit, tag the commit, and push both together. The tag's run then builds once and creates the GitHub release with all three packages:
+
+```bash
+git tag v0.1.4 && git push --atomic origin main v0.1.4
+```
 
 ## Layout
 

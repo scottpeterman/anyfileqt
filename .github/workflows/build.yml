@@ -1,0 +1,158 @@
+# anyfileqt/.github/workflows/build.yml
+#
+# Build, test and package on Linux, macOS and Windows on every push to main;
+# publish a GitHub release when a v* tag is pushed. Modelled on Easeletch's
+# workflow. Each platform runs the project's own scripts, so CI exercises
+# exactly what a person runs by hand:
+#
+#   Linux    scripts/build.sh --test, then scripts/bundle-linux.sh  -> tarball
+#   macOS    scripts/build.sh --test, then scripts/bundle-mac.sh --zip
+#   Windows  a Ninja build + ctest, then scripts\bundle-windows.bat --zip
+#
+# To release: bump project(VERSION) in CMakeLists.txt, commit, tag vX.Y.Z on
+# that commit, and push both together so only the tag's run builds:
+#   git push --atomic origin main vX.Y.Z
+
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+env:
+  QT_VERSION: '6.10.3'
+
+jobs:
+  # A release is a commit on main plus a tag on that same commit: two pushes,
+  # two identical builds. The branch run stands down when its commit carries a
+  # v* tag, and the tag's run builds and publishes.
+  gate:
+    name: Decide whether to build
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - id: check
+        shell: bash
+        run: |
+          build=true
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref_type }}" = "branch" ]; then
+            if git ls-remote --tags "https://github.com/${{ github.repository }}" 'v*' | grep -q "^${{ github.sha }}"; then
+              echo "This commit is tagged for release: leaving the build to the tag's run."
+              build=false
+            fi
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.name }}
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            os: ubuntu-22.04
+            qt_arch: linux_gcc_64
+          - name: Windows x64
+            os: windows-2022
+            qt_arch: win64_msvc2022_64
+          - name: macOS arm64
+            os: macos-14
+            qt_arch: clang_64
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: ${{ matrix.qt_arch }}
+          cache: true
+
+      # --- Linux ------------------------------------------------------------
+      # The app tests run on the offscreen platform (ctest sets it), so no Xvfb.
+      - name: Build and test (Linux)
+        if: runner.os == 'Linux'
+        run: scripts/build.sh --no-run --test --qt "$QT_ROOT_DIR"
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: scripts/bundle-linux.sh --qt "$QT_ROOT_DIR"
+
+      # --- macOS ------------------------------------------------------------
+      - name: Build and test (macOS)
+        if: runner.os == 'macOS'
+        run: scripts/build.sh --no-run --test --qt "$QT_ROOT_DIR"
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: scripts/bundle-mac.sh --qt "$QT_ROOT_DIR" --zip
+
+      # --- Windows ----------------------------------------------------------
+      - name: Set up MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Set up Ninja
+        if: runner.os == 'Windows'
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+      # Tests in their own Ninja build: bundle-windows.bat builds Release
+      # without them, with the Visual Studio generator, into build-win.
+      - name: Build and test (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DANYFILE_BUILD_TESTS=ON -DCMAKE_PREFIX_PATH=%QT_ROOT_DIR%
+          if errorlevel 1 exit /b 1
+          cmake --build build --parallel
+          if errorlevel 1 exit /b 1
+          ctest --test-dir build --output-on-failure
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: scripts\bundle-windows.bat --qt %QT_ROOT_DIR% --zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: AnyFile-${{ runner.os }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          generate_release_notes: true
