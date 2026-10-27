@@ -58,11 +58,39 @@ void attachParentConsole() {
 }
 #endif
 
+#if defined(Q_OS_LINUX)
+// ChromeOS's Linux container (Crostini) puts every window through Sommelier,
+// a Wayland proxy. Sommelier drops the connection on the first commit of any
+// transient toplevel (xdg_toplevel.set_parent), with no protocol error first,
+// so About, New Folder, Properties -- every dialog parented to the main window
+// -- killed the app with "The Wayland connection broke". Seen with Qt 6.10.3.
+// Turning off Qt's client-side decoration did not help; XWayland, which
+// Crostini also provides, does.
+//
+// Only when the user has not chosen a platform, and only when there is an X
+// display to use. Every other Wayland desktop keeps native Wayland.
+//
+// Any one marker is enough: SOMMELIER_VERSION is exported by Sommelier, and
+// the two paths are put in place by the Crostini container tooling.
+void preferXcbUnderSommelier() {
+    if (!qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) return;
+    if (qEnvironmentVariableIsEmpty("DISPLAY")) return;
+    const bool sommelier = !qEnvironmentVariableIsEmpty("SOMMELIER_VERSION") ||
+                           QFileInfo::exists(QStringLiteral("/dev/.cros_milestone")) ||
+                           QFileInfo::exists(QStringLiteral("/opt/google/cros-containers"));
+    if (sommelier) qputenv("QT_QPA_PLATFORM", "xcb");
+}
+#endif
+
 }  // namespace
 
 int main(int argc, char **argv) {
 #ifdef _WIN32
     attachParentConsole();
+#endif
+#if defined(Q_OS_LINUX)
+    // Before QApplication: the platform plugin is chosen in its constructor.
+    preferXcbUnderSommelier();
 #endif
     QApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("anyfile"));
